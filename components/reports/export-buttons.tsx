@@ -1,50 +1,132 @@
 "use client";
 
 import { Button } from "../ui/button";
-import { Download, FileText, FileSpreadsheet } from "lucide-react";
+import { Download, FileSpreadsheet } from "lucide-react";
 import { useState } from "react";
+
+// Define proper TypeScript interfaces
+interface Site {
+  id: string;
+  name: string;
+  status: string;
+  type: string;
+  created_at: string;
+}
+
+interface Equipment {
+  id: string;
+  name: string;
+  status: string;
+  type: string;
+  site_id: string;
+  created_at: string;
+}
+
+interface Intervention {
+  id: string;
+  title: string;
+  status: string;
+  type: string;
+  priority: string;
+  scheduled_date: string;
+  completed_date: string;
+  created_at: string;
+  sites: { name: string };
+  equipment: { name: string };
+}
+
+interface Alert {
+  id: string;
+  severity: string;
+  status: string;
+  type: string;
+  created_at: string;
+}
+
+interface Breakdown {
+  id: string;
+  title: string;
+  type: string;
+  severity: string;
+  status: string;
+  priority: string;
+  impact_users: number;
+  downtime_start: string;
+  resolved_at: string;
+  sites: { name: string; code: string };
+}
 
 interface ExportButtonsProps {
   data: {
-    sites: any[] | null;
-    equipment: any[] | null;
-    interventions: any[] | null;
-    alerts: any[] | null;
+    sites: Site[] | null;
+    equipment: Equipment[] | null;
+    interventions: Intervention[] | null;
+    alerts: Alert[] | null;
+    breakdowns?: Breakdown[] | null;
   };
 }
 
 export function ExportButtons({ data }: ExportButtonsProps) {
   const [isExporting, setIsExporting] = useState(false);
 
-  const exportToCSV = (dataArray: any[], filename: string) => {
+  // Safe CSV export function
+  const exportToCSV = (dataArray: any[] | null, filename: string) => {
     if (!dataArray || dataArray.length === 0) {
       alert("No data to export");
       return;
     }
 
-    const headers = Object.keys(dataArray[0]).join(",");
-    const csvContent = [
-      headers,
-      ...dataArray.map(row => 
-        Object.values(row).map(value => 
-          typeof value === 'string' && value.includes(',') 
-            ? `"${value}"` 
-            : value
-        ).join(",")
-      )
-    ].join("\n");
+    try {
+      // Flatten nested objects for CSV
+      const flattenedData = dataArray.map(item => {
+        const flattened: any = {};
+        Object.keys(item).forEach(key => {
+          const value = item[key];
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            // Flatten nested objects (like sites, equipment)
+            Object.keys(value).forEach(nestedKey => {
+              flattened[`${key}_${nestedKey}`] = value[nestedKey];
+            });
+          } else {
+            flattened[key] = value;
+          }
+        });
+        return flattened;
+      });
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `${filename}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      const headers = Object.keys(flattenedData[0]).join(",");
+      const csvContent = [
+        headers,
+        ...flattenedData.map(row => 
+          Object.values(row).map(value => {
+            // Handle different value types for CSV
+            if (value === null || value === undefined) return '';
+            const stringValue = String(value);
+            // Escape quotes and handle commas
+            return stringValue.includes(',') || stringValue.includes('"') 
+              ? `"${stringValue.replace(/"/g, '""')}"` 
+              : stringValue;
+          }).join(",")
+        )
+      ].join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `${filename}-${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("CSV export failed:", error);
+      alert("Failed to export CSV. Please try again.");
+    }
   };
 
+  // Generate comprehensive JSON report
   const generateReport = async () => {
     setIsExporting(true);
     try {
@@ -59,11 +141,16 @@ export function ExportButtons({ data }: ExportButtonsProps) {
           completedInterventions: data.interventions?.filter(i => i.status === 'completed').length || 0,
           totalAlerts: data.alerts?.length || 0,
           activeAlerts: data.alerts?.filter(a => a.status === 'active').length || 0,
+          totalBreakdowns: data.breakdowns?.length || 0,
+          activeBreakdowns: data.breakdowns?.filter(b => 
+            b.status === 'open' || b.status === 'investigating' || b.status === 'in_progress'
+          ).length || 0,
         },
         sites: data.sites || [],
         equipment: data.equipment || [],
         interventions: data.interventions || [],
-        alerts: data.alerts || []
+        alerts: data.alerts || [],
+        breakdowns: data.breakdowns || []
       };
 
       const jsonContent = JSON.stringify(reportData, null, 2);
@@ -71,11 +158,12 @@ export function ExportButtons({ data }: ExportButtonsProps) {
       const link = document.createElement("a");
       const url = URL.createObjectURL(blob);
       link.setAttribute("href", url);
-      link.setAttribute("download", `network-report-${new Date().toISOString().split('T')[0]}.json`);
+      link.setAttribute("download", `telecom-report-${new Date().toISOString().split('T')[0]}.json`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Export failed:", error);
       alert("Export failed. Please try again.");
@@ -85,11 +173,11 @@ export function ExportButtons({ data }: ExportButtonsProps) {
   };
 
   return (
-    <div className="flex items-center space-x-2">
+    <div className="flex items-center space-x-2 flex-wrap gap-2">
       <Button
         variant="outline"
         size="sm"
-        onClick={() => exportToCSV(data.sites || [], "sites-report")}
+        onClick={() => exportToCSV(data.sites, "sites")}
         disabled={!data.sites?.length}
       >
         <FileSpreadsheet className="h-4 w-4 mr-2" />
@@ -99,7 +187,7 @@ export function ExportButtons({ data }: ExportButtonsProps) {
       <Button
         variant="outline"
         size="sm"
-        onClick={() => exportToCSV(data.equipment || [], "equipment-report")}
+        onClick={() => exportToCSV(data.equipment, "equipment")}
         disabled={!data.equipment?.length}
       >
         <FileSpreadsheet className="h-4 w-4 mr-2" />
@@ -109,7 +197,7 @@ export function ExportButtons({ data }: ExportButtonsProps) {
       <Button
         variant="outline"
         size="sm"
-        onClick={() => exportToCSV(data.interventions || [], "interventions-report")}
+        onClick={() => exportToCSV(data.interventions, "interventions")}
         disabled={!data.interventions?.length}
       >
         <FileSpreadsheet className="h-4 w-4 mr-2" />
@@ -117,9 +205,31 @@ export function ExportButtons({ data }: ExportButtonsProps) {
       </Button>
       
       <Button
+        variant="outline"
+        size="sm"
+        onClick={() => exportToCSV(data.alerts, "alerts")}
+        disabled={!data.alerts?.length}
+      >
+        <FileSpreadsheet className="h-4 w-4 mr-2" />
+        Alerts CSV
+      </Button>
+
+      {data.breakdowns && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => exportToCSV(data.breakdowns, "breakdowns")}
+          disabled={!data.breakdowns.length}
+        >
+          <FileSpreadsheet className="h-4 w-4 mr-2" />
+          Breakdowns CSV
+        </Button>
+      )}
+      
+      <Button
         onClick={generateReport}
         disabled={isExporting}
-        className="bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700"
+        className="bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700 text-white"
       >
         <Download className="h-4 w-4 mr-2" />
         {isExporting ? "Generating..." : "Full Report"}
