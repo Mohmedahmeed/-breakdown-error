@@ -1,8 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// components/breakdowns/add-breakdown-dialog.tsx
 "use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "../../lib/supabase/client";
 import {
   Dialog,
   DialogContent,
@@ -38,13 +40,13 @@ export function AddBreakdownDialog({ children, sites, equipment, users }: AddBre
     title: "",
     description: "",
     type: "",
-    severity: "major",
+    severity: "",
     priority: "medium",
+    status: "open",
     site_id: "",
-    equipment_id: "",
-    assigned_to: "",
-    impact_users: "",
-    downtime_start: "",
+    equipment_id: "none", // Using "none" instead of empty string
+    assigned_to: "none", // Using "none" instead of empty string
+    impact_users: 0,
     estimated_fix_time: ""
   });
   
@@ -52,7 +54,7 @@ export function AddBreakdownDialog({ children, sites, equipment, users }: AddBre
   const supabase = createClient();
 
   const filteredEquipment = equipment.filter(eq => 
-    formData.site_id !== "" ? eq.site_id === formData.site_id : false
+    selectedSite ? eq.site_id === selectedSite : false
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -70,15 +72,15 @@ export function AddBreakdownDialog({ children, sites, equipment, users }: AddBre
           type: formData.type,
           severity: formData.severity,
           priority: formData.priority,
+          status: formData.status,
           site_id: formData.site_id,
-          equipment_id: formData.equipment_id || null,
-          assigned_to: formData.assigned_to || null,
+          equipment_id: formData.equipment_id === "none" ? null : formData.equipment_id,
+          assigned_to: formData.assigned_to === "none" ? null : formData.assigned_to,
           reported_by: user?.id,
-          impact_users: formData.impact_users ? parseInt(formData.impact_users) : 0,
-          downtime_start: formData.downtime_start || null,
+          impact_users: formData.impact_users || 0,
           estimated_fix_time: formData.estimated_fix_time ? 
             `PT${formData.estimated_fix_time}H` : null,
-          status: 'open'
+          downtime_start: new Date().toISOString()
         }]);
         
       if (error) throw error;
@@ -89,19 +91,19 @@ export function AddBreakdownDialog({ children, sites, equipment, users }: AddBre
         title: "",
         description: "",
         type: "",
-        severity: "major",
+        severity: "",
         priority: "medium",
+        status: "open",
         site_id: "",
-        equipment_id: "",
-        assigned_to: "",
-        impact_users: "",
-        downtime_start: "",
+        equipment_id: "none",
+        assigned_to: "none",
+        impact_users: 0,
         estimated_fix_time: ""
       });
       router.refresh();
     } catch (error) {
       console.error('Error creating breakdown:', error);
-      alert('Error reporting breakdown. Please check all fields and try again.');
+      alert('Error creating breakdown. Please check all fields and try again.');
     } finally {
       setIsLoading(false);
     }
@@ -116,17 +118,17 @@ export function AddBreakdownDialog({ children, sites, equipment, users }: AddBre
         <DialogHeader>
           <DialogTitle>Report New Breakdown</DialogTitle>
           <DialogDescription>
-            Report a new network outage or equipment failure. All fields marked with * are required.
+            Report a network breakdown or failure. All fields marked with * are required.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="title">Incident Title *</Label>
+            <Label htmlFor="title">Breakdown Title *</Label>
             <Input
               id="title"
               value={formData.title}
               onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-              placeholder="Power outage at main transmission site"
+              placeholder="Power failure at main antenna"
               required
             />
           </div>
@@ -137,12 +139,12 @@ export function AddBreakdownDialog({ children, sites, equipment, users }: AddBre
               id="description"
               value={formData.description}
               onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              placeholder="Detailed description of the incident..."
+              placeholder="Detailed description of the breakdown..."
               rows={3}
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="type">Breakdown Type *</Label>
               <Select
@@ -168,9 +170,10 @@ export function AddBreakdownDialog({ children, sites, equipment, users }: AddBre
               <Select
                 value={formData.severity}
                 onValueChange={(value) => setFormData(prev => ({ ...prev, severity: value }))}
+                required
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select severity" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="minor">Minor</SelectItem>
@@ -179,6 +182,9 @@ export function AddBreakdownDialog({ children, sites, equipment, users }: AddBre
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="priority">Priority</Label>
               <Select
@@ -196,6 +202,22 @@ export function AddBreakdownDialog({ children, sites, equipment, users }: AddBre
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">Open</SelectItem>
+                  <SelectItem value="investigating">Investigating</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -203,13 +225,13 @@ export function AddBreakdownDialog({ children, sites, equipment, users }: AddBre
             <Select
               value={formData.site_id}
               onValueChange={(value) => {
-                setFormData(prev => ({ ...prev, site_id: value, equipment_id: "" }));
+                setFormData(prev => ({ ...prev, site_id: value, equipment_id: "none" }));
                 setSelectedSite(value);
               }}
               required
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select affected site" />
+                <SelectValue placeholder="Select site" />
               </SelectTrigger>
               <SelectContent>
                 {sites.map((site) => (
@@ -229,10 +251,10 @@ export function AddBreakdownDialog({ children, sites, equipment, users }: AddBre
                 onValueChange={(value) => setFormData(prev => ({ ...prev, equipment_id: value }))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select equipment (optional)" />
+                  <SelectValue placeholder="Select equipment" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No specific equipment</SelectItem>
+                  <SelectItem value="none">No specific equipment</SelectItem>
                   {filteredEquipment.map((eq) => (
                     <SelectItem key={eq.id} value={eq.id}>
                       {eq.name}
@@ -244,16 +266,16 @@ export function AddBreakdownDialog({ children, sites, equipment, users }: AddBre
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="assigned_to">Assign To</Label>
+            <Label htmlFor="assigned_to">Assign To (Optional)</Label>
             <Select
               value={formData.assigned_to}
               onValueChange={(value) => setFormData(prev => ({ ...prev, assigned_to: value }))}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select technician (optional)" />
+                <SelectValue placeholder="Select technician" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Unassigned</SelectItem>
+                <SelectItem value="none">Unassigned</SelectItem>
                 {users.map((user) => (
                   <SelectItem key={user.id} value={user.id}>
                     {user.full_name} ({user.role})
@@ -263,25 +285,16 @@ export function AddBreakdownDialog({ children, sites, equipment, users }: AddBre
             </Select>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="impact_users">Affected Users</Label>
+              <Label htmlFor="impact_users">Impacted Users</Label>
               <Input
                 id="impact_users"
                 type="number"
                 min="0"
                 value={formData.impact_users}
-                onChange={(e) => setFormData(prev => ({ ...prev, impact_users: e.target.value }))}
+                onChange={(e) => setFormData(prev => ({ ...prev, impact_users: parseInt(e.target.value) || 0 }))}
                 placeholder="0"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="downtime_start">Downtime Started</Label>
-              <Input
-                id="downtime_start"
-                type="datetime-local"
-                value={formData.downtime_start}
-                onChange={(e) => setFormData(prev => ({ ...prev, downtime_start: e.target.value }))}
               />
             </div>
             <div className="space-y-2">

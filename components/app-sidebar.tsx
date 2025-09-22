@@ -13,12 +13,23 @@ import {
   Settings,
   Users,
   Zap,
-  Signal
+  Signal,
+  AlertCircle
 } from "lucide-react";
 
+interface User {
+  email: string;
+  id: string;
+}
+
+interface Profile {
+  full_name?: string;
+  role?: string;
+}
+
 interface SidebarProps {
-  user: any;
-  profile: any;
+  user: User;
+  profile: Profile | null;
 }
 
 const navigation = [
@@ -41,16 +52,16 @@ const navigation = [
     description: "Hardware status"
   },
   {
-    name: "Breakdowns",
-    href: "/dashboard/breakdowns",
-    icon: AlertTriangle,
-    description: "Outages & failures"
-  },
-  {
     name: "Maintenance",
     href: "/dashboard/interventions",
     icon: Wrench,
     description: "Service tasks"
+  },
+  {
+    name: "Breakdowns",
+    href: "/dashboard/breakdowns",
+    icon: AlertCircle,
+    description: "Network failures"
   },
   {
     name: "Alerts",

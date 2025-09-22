@@ -1,8 +1,9 @@
+// components/breakdowns/edit-breakdown-dialog.tsx
 "use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "../../lib/supabase/client";
 import {
   Dialog,
   DialogContent,
@@ -23,11 +24,44 @@ import {
   SelectValue,
 } from "../ui/select";
 
+interface Site {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface Equipment {
+  id: string;
+  name: string;
+  site_id: string;
+}
+
+interface User {
+  id: string;
+  full_name: string;
+  role: string;
+}
+
+interface Breakdown {
+  id: string;
+  title: string;
+  description?: string;
+  type: string;
+  severity: string;
+  priority: string;
+  status: string;
+  site_id: string;
+  equipment_id?: string;
+  assigned_to?: string;
+  impact_users?: number;
+  estimated_fix_time?: string;
+}
+
 interface EditBreakdownDialogProps {
-  breakdown: any;
-  sites: any[];
-  equipment: any[];
-  users: any[];
+  breakdown: Breakdown;
+  sites: Site[];
+  equipment: Equipment[];
+  users: User[];
   children: React.ReactNode;
 }
 
@@ -35,6 +69,14 @@ export function EditBreakdownDialog({ breakdown, sites, equipment, users, childr
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedSite, setSelectedSite] = useState(breakdown.site_id);
+  
+  // Parse the estimated fix time from ISO duration format
+  const getEstimatedHours = (isoTime?: string) => {
+    if (!isoTime) return "";
+    const match = isoTime.match(/PT(\d+(?:\.\d+)?)H/);
+    return match ? match[1] : "";
+  };
+  
   const [formData, setFormData] = useState({
     title: breakdown.title,
     description: breakdown.description || "",
@@ -43,17 +85,10 @@ export function EditBreakdownDialog({ breakdown, sites, equipment, users, childr
     priority: breakdown.priority,
     status: breakdown.status,
     site_id: breakdown.site_id,
-    equipment_id: breakdown.equipment_id || "",
-    assigned_to: breakdown.assigned_to || "",
-    impact_users: breakdown.impact_users?.toString() || "",
-    downtime_start: breakdown.downtime_start ? 
-      new Date(breakdown.downtime_start).toISOString().slice(0, 16) : "",
-    downtime_end: breakdown.downtime_end ? 
-      new Date(breakdown.downtime_end).toISOString().slice(0, 16) : "",
-    estimated_fix_time: breakdown.estimated_fix_time ? 
-      parseInt(breakdown.estimated_fix_time.replace('PT', '').replace('H', '')) : "",
-    root_cause: breakdown.root_cause || "",
-    resolution_notes: breakdown.resolution_notes || ""
+    equipment_id: breakdown.equipment_id || "none",
+    assigned_to: breakdown.assigned_to || "none",
+    impact_users: breakdown.impact_users || 0,
+    estimated_fix_time: getEstimatedHours(breakdown.estimated_fix_time)
   });
   
   const router = useRouter();
@@ -66,7 +101,7 @@ export function EditBreakdownDialog({ breakdown, sites, equipment, users, childr
     setIsLoading(true);
 
     try {
-      const updateData: any = {
+      const updates: Record<string, unknown> = {
         title: formData.title,
         description: formData.description,
         type: formData.type,
@@ -74,32 +109,30 @@ export function EditBreakdownDialog({ breakdown, sites, equipment, users, childr
         priority: formData.priority,
         status: formData.status,
         site_id: formData.site_id,
-        equipment_id: formData.equipment_id || null,
-        assigned_to: formData.assigned_to || null,
-        impact_users: formData.impact_users ? parseInt(formData.impact_users) : 0,
-        downtime_start: formData.downtime_start || null,
-        downtime_end: formData.downtime_end || null,
+        equipment_id: formData.equipment_id === "none" ? null : formData.equipment_id,
+        assigned_to: formData.assigned_to === "none" ? null : formData.assigned_to,
+        impact_users: formData.impact_users || 0,
         estimated_fix_time: formData.estimated_fix_time ? 
-          `PT${formData.estimated_fix_time}H` : null,
-        root_cause: formData.root_cause || null,
-        resolution_notes: formData.resolution_notes || null
+          `PT${formData.estimated_fix_time}H` : null
       };
 
-      // Auto-set timestamps based on status changes
-      if (formData.status === 'investigating' && breakdown.status !== 'investigating') {
-        updateData.acknowledged_at = new Date().toISOString();
-      } else if (formData.status === 'resolved' && breakdown.status !== 'resolved') {
-        updateData.resolved_at = new Date().toISOString();
-        if (!formData.downtime_end) {
-          updateData.downtime_end = new Date().toISOString();
+      // Handle status changes
+      if (formData.status !== breakdown.status) {
+        if (formData.status === 'investigating') {
+          updates.acknowledged_at = new Date().toISOString();
         }
-      } else if (formData.status === 'closed' && breakdown.status !== 'closed') {
-        updateData.closed_at = new Date().toISOString();
+        if (formData.status === 'resolved') {
+          updates.resolved_at = new Date().toISOString();
+          updates.downtime_end = new Date().toISOString();
+        }
+        if (formData.status === 'closed') {
+          updates.closed_at = new Date().toISOString();
+        }
       }
 
       const { error } = await supabase
         .from('breakdowns')
-        .update(updateData)
+        .update(updates)
         .eq('id', breakdown.id);
         
       if (error) throw error;
@@ -119,16 +152,16 @@ export function EditBreakdownDialog({ breakdown, sites, equipment, users, childr
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Breakdown Details</DialogTitle>
+          <DialogTitle>Edit Breakdown</DialogTitle>
           <DialogDescription>
-            Update breakdown information and track resolution progress. All fields marked with * are required.
+            Update breakdown information. All fields marked with * are required.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="title">Incident Title *</Label>
+            <Label htmlFor="title">Breakdown Title *</Label>
             <Input
               id="title"
               value={formData.title}
@@ -147,9 +180,9 @@ export function EditBreakdownDialog({ breakdown, sites, equipment, users, childr
             />
           </div>
 
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="type">Type *</Label>
+              <Label htmlFor="type">Breakdown Type *</Label>
               <Select
                 value={formData.type}
                 onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}
@@ -183,6 +216,9 @@ export function EditBreakdownDialog({ breakdown, sites, equipment, users, childr
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="priority">Priority</Label>
               <Select
@@ -225,7 +261,7 @@ export function EditBreakdownDialog({ breakdown, sites, equipment, users, childr
             <Select
               value={formData.site_id}
               onValueChange={(value) => {
-                setFormData(prev => ({ ...prev, site_id: value, equipment_id: "" }));
+                setFormData(prev => ({ ...prev, site_id: value, equipment_id: "none" }));
                 setSelectedSite(value);
               }}
             >
@@ -253,7 +289,7 @@ export function EditBreakdownDialog({ breakdown, sites, equipment, users, childr
                   <SelectValue placeholder="No specific equipment" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No specific equipment</SelectItem>
+                  <SelectItem value="none">No specific equipment</SelectItem>
                   {filteredEquipment.map((eq) => (
                     <SelectItem key={eq.id} value={eq.id}>
                       {eq.name}
@@ -274,7 +310,7 @@ export function EditBreakdownDialog({ breakdown, sites, equipment, users, childr
                 <SelectValue placeholder="Unassigned" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Unassigned</SelectItem>
+                <SelectItem value="none">Unassigned</SelectItem>
                 {users.map((user) => (
                   <SelectItem key={user.id} value={user.id}>
                     {user.full_name} ({user.role})
@@ -284,33 +320,15 @@ export function EditBreakdownDialog({ breakdown, sites, equipment, users, childr
             </Select>
           </div>
 
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="impact_users">Affected Users</Label>
+              <Label htmlFor="impact_users">Impacted Users</Label>
               <Input
                 id="impact_users"
                 type="number"
                 min="0"
                 value={formData.impact_users}
-                onChange={(e) => setFormData(prev => ({ ...prev, impact_users: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="downtime_start">Downtime Started</Label>
-              <Input
-                id="downtime_start"
-                type="datetime-local"
-                value={formData.downtime_start}
-                onChange={(e) => setFormData(prev => ({ ...prev, downtime_start: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="downtime_end">Downtime Ended</Label>
-              <Input
-                id="downtime_end"
-                type="datetime-local"
-                value={formData.downtime_end}
-                onChange={(e) => setFormData(prev => ({ ...prev, downtime_end: e.target.value }))}
+                onChange={(e) => setFormData(prev => ({ ...prev, impact_users: parseInt(e.target.value) || 0 }))}
               />
             </div>
             <div className="space-y-2">
@@ -324,28 +342,6 @@ export function EditBreakdownDialog({ breakdown, sites, equipment, users, childr
                 onChange={(e) => setFormData(prev => ({ ...prev, estimated_fix_time: e.target.value }))}
               />
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="root_cause">Root Cause Analysis</Label>
-            <Textarea
-              id="root_cause"
-              value={formData.root_cause}
-              onChange={(e) => setFormData(prev => ({ ...prev, root_cause: e.target.value }))}
-              placeholder="Detailed analysis of what caused this breakdown..."
-              rows={2}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="resolution_notes">Resolution Notes</Label>
-            <Textarea
-              id="resolution_notes"
-              value={formData.resolution_notes}
-              onChange={(e) => setFormData(prev => ({ ...prev, resolution_notes: e.target.value }))}
-              placeholder="Steps taken to resolve the issue, parts replaced, etc..."
-              rows={3}
-            />
           </div>
 
           <div className="flex justify-end space-x-2 pt-4">
