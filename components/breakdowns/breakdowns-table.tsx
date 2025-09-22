@@ -49,7 +49,6 @@ interface Breakdown {
   equipment_id?: string;
   assigned_to?: string;
   reported_by?: string;
-  resolved_by?: string;
   reported_at?: string;
   resolved_at?: string;
   closed_at?: string;
@@ -117,7 +116,7 @@ export function BreakdownsTable({ breakdowns, sites, equipment, users }: Breakdo
         updates.resolved_at = new Date().toISOString();
         updates.downtime_end = new Date().toISOString();
         const { data: { user } } = await supabase.auth.getUser();
-        updates.resolved_by = user?.id;
+        updates.assigned_to = user?.id;
       }
       
       if (newStatus === 'closed') {
