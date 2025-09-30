@@ -1,3 +1,4 @@
+// components/app-sidebar.tsx
 "use client";
 
 import Link from "next/link";
@@ -14,7 +15,8 @@ import {
   Users,
   Zap,
   Signal,
-  AlertCircle
+  AlertCircle,
+  UserCircle
 } from "lucide-react";
 
 interface User {
@@ -77,6 +79,15 @@ const navigation = [
   }
 ];
 
+const accountNavigation = [
+  {
+    name: "Profile",
+    href: "/dashboard/profile",
+    icon: UserCircle,
+    description: "Account settings"
+  }
+];
+
 const adminNavigation = [
   {
     name: "Team",
@@ -97,6 +108,7 @@ export function AppSidebar({ user, profile }: SidebarProps) {
 
   const allNavigation = [
     ...navigation,
+    ...accountNavigation,
     ...(profile?.role === 'admin' ? adminNavigation : [])
   ];
 
@@ -119,27 +131,29 @@ export function AppSidebar({ user, profile }: SidebarProps) {
 
         {/* User Profile */}
         <div className="p-6 border-b border-slate-700/50 bg-slate-800/30">
-          <div className="flex items-center space-x-4">
-            <div className="relative">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-xl flex items-center justify-center shadow-lg">
-                <span className="text-white font-bold text-lg">
-                  {profile?.full_name?.[0] || user.email[0].toUpperCase()}
-                </span>
+          <Link href="/dashboard/profile" className="block hover:opacity-80 transition-opacity">
+            <div className="flex items-center space-x-4">
+              <div className="relative">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-xl flex items-center justify-center shadow-lg">
+                  <span className="text-white font-bold text-lg">
+                    {profile?.full_name?.[0] || user.email[0].toUpperCase()}
+                  </span>
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-slate-800"></div>
               </div>
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-slate-800"></div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-semibold truncate">
-                {profile?.full_name || user.email.split('@')[0]}
-              </p>
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <p className="text-slate-300 text-sm capitalize">
-                  {profile?.role || 'technician'}
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-semibold truncate">
+                  {profile?.full_name || user.email.split('@')[0]}
                 </p>
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <p className="text-slate-300 text-sm capitalize">
+                    {profile?.role || 'technician'}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          </Link>
         </div>
 
         {/* Navigation */}
