@@ -56,6 +56,14 @@ interface Breakdown {
   sites: { name: string; code: string };
 }
 
+interface Energy {
+  id: string;
+  consumption_kwh: number;
+  cost_amount: number;
+  recorded_at: string;
+  created_at: string;
+}
+
 interface ExportButtonsProps {
   data: {
     sites: Site[] | null;
@@ -63,6 +71,7 @@ interface ExportButtonsProps {
     interventions: Intervention[] | null;
     alerts: Alert[] | null;
     breakdowns?: Breakdown[] | null;
+    energy?: Energy[] | null;
   };
 }
 
@@ -130,6 +139,9 @@ export function ExportButtons({ data }: ExportButtonsProps) {
   const generateReport = async () => {
     setIsExporting(true);
     try {
+      const totalEnergyConsumption = data.energy?.reduce((sum, e) => sum + parseFloat(String(e.consumption_kwh || 0)), 0) || 0;
+      const totalEnergyCost = data.energy?.reduce((sum, e) => sum + parseFloat(String(e.cost_amount || 0)), 0) || 0;
+
       const reportData = {
         generatedAt: new Date().toISOString(),
         summary: {
@@ -142,15 +154,19 @@ export function ExportButtons({ data }: ExportButtonsProps) {
           totalAlerts: data.alerts?.length || 0,
           activeAlerts: data.alerts?.filter(a => a.status === 'active').length || 0,
           totalBreakdowns: data.breakdowns?.length || 0,
-          activeBreakdowns: data.breakdowns?.filter(b => 
+          activeBreakdowns: data.breakdowns?.filter(b =>
             b.status === 'open' || b.status === 'investigating' || b.status === 'in_progress'
           ).length || 0,
+          totalEnergyConsumption: totalEnergyConsumption,
+          totalEnergyCost: totalEnergyCost,
+          totalEnergyRecords: data.energy?.length || 0,
         },
         sites: data.sites || [],
         equipment: data.equipment || [],
         interventions: data.interventions || [],
         alerts: data.alerts || [],
-        breakdowns: data.breakdowns || []
+        breakdowns: data.breakdowns || [],
+        energy: data.energy || []
       };
 
       const jsonContent = JSON.stringify(reportData, null, 2);
@@ -225,7 +241,19 @@ export function ExportButtons({ data }: ExportButtonsProps) {
           Breakdowns CSV
         </Button>
       )}
-      
+
+      {data.energy && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => exportToCSV(data.energy, "energy")}
+          disabled={!data.energy.length}
+        >
+          <FileSpreadsheet className="h-4 w-4 mr-2" />
+          Energy CSV
+        </Button>
+      )}
+
       <Button
         onClick={generateReport}
         disabled={isExporting}

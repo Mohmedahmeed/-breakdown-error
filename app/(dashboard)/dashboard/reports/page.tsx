@@ -5,9 +5,10 @@ import { SiteStatusChart } from "../../../../components/reports/site-status-char
 import { EquipmentStatusChart } from "../../../../components/reports/equipment-status-chart";
 import { MaintenanceChart } from "../../../../components/reports/maintenance-chart";
 import { AlertsChart } from "../../../../components/reports/alerts-chart";
+import { EnergyChart } from "../../../../components/reports/energy-chart";
 import { ExportButtons } from "../../../../components/reports/export-buttons";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../../components/ui/card";
-import { FileBarChart, TrendingUp, Activity, Calendar, AlertTriangle } from "lucide-react";
+import { FileBarChart, TrendingUp, Activity, Calendar, AlertTriangle, Zap } from "lucide-react";
 
 export default async function ReportsPage() {
   const supabase = await createClient();
@@ -18,7 +19,8 @@ export default async function ReportsPage() {
     { data: equipment },
     { data: interventions },
     { data: alerts },
-    { data: breakdowns }
+    { data: breakdowns },
+    { data: energyData }
   ] = await Promise.all([
     supabase.from("sites").select("id, name, status, type, created_at"),
     supabase.from("equipment").select("id, name, status, type, site_id, created_at"),
@@ -30,23 +32,27 @@ export default async function ReportsPage() {
     // FIXED BREAKDOWNS QUERY - Use proper join syntax
     supabase.from("breakdowns")
       .select(`
-        id, 
-        title, 
-        type, 
-        severity, 
-        status, 
-        priority, 
-        impact_users, 
-        downtime_start, 
-        resolved_at, 
-        closed_at, 
+        id,
+        title,
+        type,
+        severity,
+        status,
+        priority,
+        impact_users,
+        downtime_start,
+        resolved_at,
+        closed_at,
         created_at,
         sites!inner(name, code)
       `)
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: false }),
+    supabase.from("energy_consumption").select("id, consumption_kwh, cost_amount, recorded_at, created_at")
   ]);
 
   // Calculate statistics
+  const totalEnergyConsumption = energyData?.reduce((sum, e) => sum + parseFloat(e.consumption_kwh || 0), 0) || 0;
+  const totalEnergyCost = energyData?.reduce((sum, e) => sum + parseFloat(e.cost_amount || 0), 0) || 0;
+
   const stats = {
     totalSites: sites?.length || 0,
     activeSites: sites?.filter(s => s.status === 'active').length || 0,
@@ -57,7 +63,9 @@ export default async function ReportsPage() {
     totalAlerts: alerts?.length || 0,
     activeAlerts: alerts?.filter(a => a.status === 'active').length || 0,
     totalBreakdowns: breakdowns?.length || 0,
-    activeBreakdowns: breakdowns?.filter(b => b.status === 'open' || b.status === 'investigating' || b.status === 'in_progress').length || 0
+    activeBreakdowns: breakdowns?.filter(b => b.status === 'open' || b.status === 'investigating' || b.status === 'in_progress').length || 0,
+    totalEnergyConsumption: totalEnergyConsumption,
+    totalEnergyCost: totalEnergyCost
   };
 
   // Prepare chart data
@@ -87,7 +95,7 @@ export default async function ReportsPage() {
     date.setMonth(date.getMonth() - (5 - i));
     const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
     const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-    
+
     const monthInterventions = interventions?.filter(int => {
       const intDate = new Date(int.created_at);
       return intDate >= monthStart && intDate <= monthEnd;
@@ -98,6 +106,28 @@ export default async function ReportsPage() {
       scheduled: monthInterventions.filter(i => i.status === 'scheduled').length,
       completed: monthInterventions.filter(i => i.status === 'completed').length,
       total: monthInterventions.length
+    };
+  });
+
+  // Monthly energy data
+  const monthlyEnergyData = Array.from({ length: 6 }, (_, i) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - (5 - i));
+    const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+    const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
+    const monthEnergy = energyData?.filter(energy => {
+      const energyDate = new Date(energy.recorded_at);
+      return energyDate >= monthStart && energyDate <= monthEnd;
+    }) || [];
+
+    const totalConsumption = monthEnergy.reduce((sum, e) => sum + parseFloat(e.consumption_kwh || 0), 0);
+    const totalCost = monthEnergy.reduce((sum, e) => sum + parseFloat(e.cost_amount || 0), 0);
+
+    return {
+      month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+      consumption: parseFloat(totalConsumption.toFixed(2)),
+      cost: parseFloat(totalCost.toFixed(2))
     };
   });
 
@@ -132,7 +162,8 @@ export default async function ReportsPage() {
       ...b,
       site_name: Array.isArray(b.sites) && b.sites.length > 0 ? b.sites[0]?.name : b.sites?.name,
       site_code: Array.isArray(b.sites) && b.sites.length > 0 ? b.sites[0]?.code : b.sites?.code
-    })) : []
+    })) : [],
+    energy: energyData || []
   };
 
   return (
@@ -160,7 +191,7 @@ export default async function ReportsPage() {
       <ReportsOverview stats={stats} />
 
       {/* Quick Insights Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <Card className="border-l-4 border-l-green-500">
           <CardContent className="p-6">
             <div className="flex items-center space-x-4">
@@ -213,12 +244,27 @@ export default async function ReportsPage() {
               <div>
                 <p className="text-sm text-slate-600">Breakdown Resolution</p>
                 <p className="text-2xl font-bold text-red-600">
-                  {stats.totalBreakdowns > 0 
+                  {stats.totalBreakdowns > 0
                     ? ((1 - stats.activeBreakdowns / stats.totalBreakdowns) * 100).toFixed(1)
                     : '100'
                   }%
                 </p>
                 <p className="text-xs text-slate-500">{stats.activeBreakdowns} active</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-yellow-500">
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-4">
+              <Zap className="h-8 w-8 text-yellow-500" />
+              <div>
+                <p className="text-sm text-slate-600">Energy Consumption</p>
+                <p className="text-2xl font-bold text-yellow-600">
+                  {stats.totalEnergyConsumption.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                </p>
+                <p className="text-xs text-slate-500">kWh total</p>
               </div>
             </div>
           </CardContent>
@@ -231,6 +277,7 @@ export default async function ReportsPage() {
         <EquipmentStatusChart data={equipmentStatusData} />
         <AlertsChart data={alertsSeverityData} />
         <MaintenanceChart data={monthlyMaintenanceData} />
+        <EnergyChart data={monthlyEnergyData} />
       </div>
 
       {/* Breakdowns Report Section */}
@@ -255,7 +302,7 @@ export default async function ReportsPage() {
           <CardTitle>Network Summary Report</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-6">
             <div className="text-center">
               <div className="text-3xl font-bold text-blue-600">{stats.totalSites}</div>
               <div className="text-sm text-slate-600">Total Sites</div>
@@ -275,6 +322,12 @@ export default async function ReportsPage() {
             <div className="text-center">
               <div className="text-3xl font-bold text-red-600">{stats.totalBreakdowns}</div>
               <div className="text-sm text-slate-600">Network Breakdowns</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-yellow-600">
+                {stats.totalEnergyConsumption.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+              </div>
+              <div className="text-sm text-slate-600">Energy (kWh)</div>
             </div>
           </div>
         </CardContent>
