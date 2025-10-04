@@ -4,7 +4,8 @@
 import { createClient } from "../lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { Button } from "./ui/button";
-import { LogOut, Bell, Search, Wifi, Activity } from "lucide-react";
+import { LogOut, Search, Wifi, Activity } from "lucide-react";
+import { NotificationDropdown } from "./header/notification-dropdown";
 import { useState, useEffect } from 'react';
 
 interface HeaderProps {
@@ -15,23 +16,48 @@ interface HeaderProps {
 export function Header({ user, profile }: HeaderProps) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
+  const [alerts, setAlerts] = useState([]);
   const router = useRouter();
   const supabase = createClient();
 
   useEffect(() => {
-    // Only run on client side to avoid hydration mismatch
     const updateTime = () => {
       setCurrentTime(new Date().toLocaleTimeString());
     };
     
-    // Set initial time
     updateTime();
-    
-    // Update time every second
     const timer = setInterval(updateTime, 1000);
     
     return () => clearInterval(timer);
   }, []);
+
+  // Fetch active alerts
+  useEffect(() => {
+    const fetchAlerts = async () => {
+      const { data } = await supabase
+        .from("alerts")
+        .select(`
+          id,
+          title,
+          message,
+          severity,
+          status,
+          created_at,
+          sites(name)
+        `)
+        .eq("status", "active")
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (data) setAlerts(data);
+    };
+
+    fetchAlerts();
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchAlerts, 30000);
+    return () => clearInterval(interval);
+  }, [supabase]);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -78,12 +104,7 @@ export function Header({ user, profile }: HeaderProps) {
         </div>
         
         {/* Notifications */}
-        <Button variant="ghost" size="sm" className="relative hover:bg-slate-100">
-          <Bell className="h-5 w-5" />
-          <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
-            3
-          </span>
-        </Button>
+        <NotificationDropdown initialAlerts={alerts} />
         
         {/* User info */}
         {profile && (

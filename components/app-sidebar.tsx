@@ -100,7 +100,13 @@ const adminNavigation = [
     href: "/dashboard/settings",
     icon: Settings,
     description: "Configuration"
-  }
+  },
+  {
+  name: "Energy",
+  href: "/dashboard/energy",
+  icon: Zap,
+  description: "Power monitoring"
+}
 ];
 
 export function AppSidebar({ user, profile }: SidebarProps) {
