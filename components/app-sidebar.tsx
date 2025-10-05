@@ -42,10 +42,10 @@ const navigation = [
     description: "System overview"
   },
   {
-    name: "Cell Sites",
+    name: "Network Sites",
     href: "/dashboard/sites",
     icon: Antenna,
-    description: "Base stations"
+    description: "Cell tower sites"
   },
   {
     name: "Equipment",
@@ -54,10 +54,10 @@ const navigation = [
     description: "Hardware status"
   },
   {
-    name: "Maintenance",
+    name: "Interventions",
     href: "/dashboard/interventions",
     icon: Wrench,
-    description: "Service tasks"
+    description: "Maintenance tasks"
   },
   {
     name: "Breakdowns",
